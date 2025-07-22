@@ -1,0 +1,35 @@
+
+# Application Configuration
+app:
+  name: "Free Visual AI"
+  version: "1.0.0"
+  description: "Completely free visual AI generator"
+
+# Model Configuration
+models:
+  text_model:
+    name: "microsoft/DialoGPT-small"
+    local_path: "models/local_models/text_model/"
+    max_tokens: 512
+    
+  vision_model:
+    name: "openai/clip-vit-base-patch32"
+    local_path: "models/local_models/vision_model/"
+    
+  generation_model:
+    name: "runwayml/stable-diffusion-v1-5"
+    local_path: "models/local_models/diffusion_model/"
+    inference_steps: 20
+    guidance_scale: 7.5
+
+# Visualization Settings
+visualization:
+  default_width: 1024
+  default_height: 768
+  supported_formats: ["svg", "png", "pdf", "html"]
+  
+# Cache Settings
+cache:
+  enable: true
+  max_size: "500MB"
+  ttl: 3600
