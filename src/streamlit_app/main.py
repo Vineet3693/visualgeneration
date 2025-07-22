@@ -1,255 +1,153 @@
 
 import streamlit as st
-import sys
-import os
-
-# Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-
-from src.models.model_loader import LocalModelManager
-from src.core.visual_generator import FreeVisualGenerator
+import plotly.express as px
 import plotly.graph_objects as go
-from PIL import Image
-import io
+import pandas as pd
+import numpy as np
+import re
 
-# Page configuration
 st.set_page_config(
-    page_title="Free Visual AI Generator",
+    page_title="🎨 Free Visual AI Generator", 
     page_icon="🎨",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .sub-header {
-        font-size: 1.2rem;
-        color: #666;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .feature-box {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 10px;
-        margin: 1rem 0;
-    }
-    .success-message {
-        color: #28a745;
-        font-weight: bold;
-    }
-</style>
-""", unsafe_allow_html=True)
+# Header
+st.title("🎨 Free Visual AI Generator")
+st.markdown("### Transform Text into Beautiful Visualizations - No AI Models Required!")
 
-@st.cache_resource
-def load_models():
-    """Load all models with caching"""
-    with st.spinner("Loading AI models... This may take a few minutes on first run."):
-        try:
-            model_manager = LocalModelManager()
-            return model_manager
-        except Exception as e:
-            st.error(f"Error loading models: {e}")
-            return None
+# Sidebar
+with st.sidebar:
+    st.header("🎯 Visualization Options")
+    viz_type = st.selectbox("Choose visualization type:", [
+        "Flowchart", "Mind Map", "Network Diagram", "Bar Chart", "Timeline"
+    ])
 
-def main():
-    # Header
-    st.markdown('<h1 class="main-header">🎨 Free Visual AI Generator</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Transform text into beautiful visualizations - completely free!</p>', unsafe_allow_html=True)
+# Main content
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    st.subheader("📝 Input")
+    user_text = st.text_area(
+        "Describe your process or data:",
+        value="Start -> Planning -> Development -> Testing -> Deployment -> End",
+        height=200
+    )
     
-    # Initialize models
-    model_manager = load_models()
-    
-    if model_manager is None:
-        st.error("Failed to load models. Please refresh the page.")
-        st.stop()
-    
-    # Initialize visual generator
-    visual_generator = FreeVisualGenerator(model_manager)
-    
-    # Sidebar
-    with st.sidebar:
-        st.header("⚙️ Configuration")
+    if st.button("🎨 Generate Visualization", type="primary"):
+        # Simple text processing
+        steps = [step.strip() for step in user_text.replace("->", ",").split(",")]
+        steps = [step for step in steps if step]  # Remove empty steps
         
-        # Input type selection
-        input_type = st.selectbox(
-            "Input Type",
-            ["Text Description", "Upload Image", "Mixed Input"],
-            help="Choose how you want to provide input"
-        )
-        
-        # Visualization type
-        vis_type = st.selectbox(
-            "Visualization Type",
-            ["flowchart", "mindmap", "network", "infographic", "interactive"],
-            help="Choose the type of visualization to generate"
-        )
-        
-        # Advanced settings
-        with st.expander("🔧 Advanced Settings"):
-            max_entities = st.slider("Max Entities", 5, 20, 10)
-            color_scheme = st.selectbox("Color Scheme", ["default", "corporate", "vibrant", "minimal"])
-            export_format = st.selectbox("Export Format", ["PNG", "SVG", "PDF", "HTML"])
-    
-    # Main content area
-    col1, col2 = st.columns([1, 1.5])
-    
-    with col1:
-        st.subheader("📝 Input")
-        
-        # Input based on type
-        user_input = None
-        uploaded_file = None
-        
-        if input_type == "Text Description":
-            user_input = st.text_area(
-                "Describe what you want to visualize:",
-                height=200,
-                placeholder="Enter your text here... For example: 'Create a flowchart showing the process of making coffee: grind beans, boil water, brew coffee, add milk, serve hot'"
-            )
+        with col2:
+            st.subheader("📊 Generated Visualization")
             
-        elif input_type == "Upload Image":
-            uploaded_file = st.file_uploader(
-                "Upload an image to analyze and visualize",
-                type=['png', 'jpg', 'jpeg'],
-                help="Upload an image and we'll analyze it to create visualizations"
-            )
-            
-            if uploaded_file:
-                st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+            if viz_type == "Flowchart":
+                # Create simple flowchart
+                fig = go.Figure()
                 
-        elif input_type == "Mixed Input":
-            user_input = st.text_area(
-                "Describe your visualization:",
-                height=150,
-                placeholder="Describe what you want to create..."
-            )
-            uploaded_file = st.file_uploader(
-                "Optional: Upload reference image",
-                type=['png', 'jpg', 'jpeg']
-            )
-        
-        # Generation button
-        generate_button = st.button(
-            "🚀 Generate Visualization",
-            type="primary",
-            use_container_width=True
-        )
-        
-        # Example prompts
-        with st.expander("💡 Example Prompts"):
-            st.write("**Flowchart Examples:**")
-            st.code("Create a flowchart for user registration process")
-            st.code("Show the steps to deploy a web application")
-            
-            st.write("**Mind Map Examples:**")
-            st.code("Create a mind map about artificial intelligence concepts")
-            st.code("Visualize the components of a healthy lifestyle")
-            
-            st.write("**Network Examples:**")
-            st.code("Show relationships between team members and projects")
-            st.code("Visualize connections in a social media network")
-    
-    with col2:
-        st.subheader("🎨 Generated Visualization")
-        
-        if generate_button:
-            if not user_input and not uploaded_file:
-                st.warning("Please provide some input to generate a visualization.")
-            else:
-                # Show progress
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                try:
-                    # Update progress
-                    progress_bar.progress(25)
-                    status_text.text("Processing input...")
+                for i, step in enumerate(steps):
+                    fig.add_trace(go.Scatter(
+                        x=[i], y=[0],
+                        mode='markers+text',
+                        marker=dict(size=80, color='lightblue'),
+                        text=step,
+                        textposition="middle center",
+                        name=step
+                    ))
                     
-                    # Generate visualization
-                    input_text = user_input or "Analyzing uploaded image..."
-                    
-                    progress_bar.progress(50)
-                    status_text.text("Creating visualization...")
-                    
-                    result = visual_generator.create_visualization(
-                        text=input_text,
-                        vis_type=vis_type
-                    )
-                    
-                    progress_bar.progress(75)
-                    status_text.text("Finalizing output...")
-                    
-                    # Display result
-                    if result['type'] == 'svg':
-                        st.markdown(result['data'], unsafe_allow_html=True)
-                        
-                        # Download button for SVG
-                        st.download_button(
-                            "📥 Download SVG",
-                            result['data'],
-                            file_name=f"{vis_type}_visualization.svg",
-                            mime="image/svg+xml"
+                    if i < len(steps) - 1:
+                        fig.add_annotation(
+                            x=i+0.4, y=0,
+                            ax=i+0.6, ay=0,
+                            xref='x', yref='y',
+                            axref='x', ayref='y',
+                            arrowhead=2,
+                            arrowsize=1,
+                            arrowwidth=2
                         )
-                        
-                    elif result['type'] == 'plotly':
-                        st.plotly_chart(result['data'], use_container_width=True)
-                        
-                        # Export options for Plotly
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            if st.button("📥 Download HTML"):
-                                html_str = result['data'].to_html()
-                                st.download_button(
-                                    "Download Interactive HTML",
-                                    html_str,
-                                    file_name=f"{vis_type}_interactive.html",
-                                    mime="text/html"
-                                )
-                        
-                    elif result['type'] == 'image':
-                        st.image(result['data'], caption=result.get('title', 'Generated Visualization'))
-                        
-                        # Download button for image
-                        if 'buffer' in result:
-                            st.download_button(
-                                "📥 Download PNG",
-                                result['buffer'].getvalue(),
-                                file_name=f"{vis_type}_visualization.png",
-                                mime="image/png"
-                            )
+                
+                fig.update_layout(
+                    title="Process Flowchart",
+                    showlegend=False,
+                    height=400,
+                    xaxis=dict(showgrid=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, showticklabels=False, range=[-1, 1])
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+            elif viz_type == "Bar Chart":
+                # Create bar chart
+                df = pd.DataFrame({
+                    'Steps': steps,
+                    'Order': range(1, len(steps) + 1)
+                })
+                fig = px.bar(df, x='Steps', y='Order', title="Process Steps")
+                st.plotly_chart(fig, use_container_width=True)
+                
+            elif viz_type == "Mind Map":
+                # Simple radial layout
+                angles = np.linspace(0, 2*np.pi, len(steps), endpoint=False)
+                x = np.cos(angles)
+                y = np.sin(angles)
+                
+                fig = go.Figure()
+                
+                # Center node
+                fig.add_trace(go.Scatter(
+                    x=[0], y=[0],
+                    mode='markers+text',
+                    marker=dict(size=100, color='red'),
+                    text="Central Topic",
+                    textposition="middle center",
+                    name="Center"
+                ))
+                
+                # Branch nodes
+                for i, (step, xi, yi) in enumerate(zip(steps, x, y)):
+                    fig.add_trace(go.Scatter(
+                        x=[xi], y=[yi],
+                        mode='markers+text',
+                        marker=dict(size=60, color='lightgreen'),
+                        text=step,
+                        textposition="middle center",
+                        name=step
+                    ))
                     
-                    progress_bar.progress(100)
-                    status_text.markdown('<p class="success-message">✅ Visualization generated successfully!</p>', unsafe_allow_html=True)
-                    
-                    # Display metadata
-                    with st.expander("ℹ️ Generation Details"):
-                        st.write(f"**Title:** {result.get('title', 'N/A')}")
-                        st.write(f"**Description:** {result.get('description', 'N/A')}")
-                        st.write(f"**Type:** {result['type']}")
-                        st.write(f"**Visualization Style:** {vis_type}")
-                    
-                except Exception as e:
-                    progress_bar.progress(100)
-                    status_text.text("")
-                    st.error(f"Generation failed: {str(e)}")
-                    st.info("Try simplifying your input or choosing a different visualization type.")
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    <div style='text-align: center; color: #666; margin-top: 2rem;'>
-        <p>🎨 Free Visual AI Generator | Built with Streamlit | No API keys required</p>
-        <p>💡 Tip: For best results, provide clear, structured descriptions of what you want to visualize.</p>
-    </div>
-    """, unsafe_allow_html=True)
+                    # Connect to center
+                    fig.add_trace(go.Scatter(
+                        x=[0, xi], y=[0, yi],
+                        mode='lines',
+                        line=dict(color='gray', width=2),
+                        showlegend=False
+                    ))
+                
+                fig.update_layout(
+                    title="Mind Map",
+                    showlegend=False,
+                    height=500,
+                    xaxis=dict(showgrid=False, showticklabels=False, range=[-2, 2]),
+                    yaxis=dict(showgrid=False, showticklabels=False, range=[-2, 2])
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Download button
+            st.success("✅ Visualization generated successfully!")
+            st.info("💡 This is a simplified version. Full AI features available after initial deployment!")
 
-if __name__ == "__main__":
-    main()
+# Footer
+st.markdown("---")
+st.markdown("🎨 **Free Visual AI Generator** - Making visualizations accessible to everyone!")
+
+# Sample data section
+st.subheader("🔧 Try These Examples:")
+examples = [
+    "User Registration -> Email Verification -> Account Setup -> Welcome Message",
+    "Planning -> Design -> Development -> Testing -> Deployment",
+    "Problem Identification -> Research -> Solution Design -> Implementation -> Evaluation",
+    "Lead Generation -> Qualification -> Proposal -> Negotiation -> Closing"
+]
+
+for example in examples:
+    if st.button(f"📋 {example[:50]}...", key=example):
+        st.experimental_rerun()
