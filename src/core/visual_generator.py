@@ -1,285 +1,252 @@
 
-import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
-import io
-import base64
-from typing import Dict, List, Optional
-from src.core.text_processor import TextProcessor
-from src.core.layout_engine import LayoutEngine
-from src.utils.svg_generator import SVGGenerator
-import plotly.graph_objects as go
-import plotly.express as px
+# src/core/visual_generator.py
+
+"""
+Main Visual Generator Class
+Orchestrates the entire visualization generation process
+"""
+
+import logging
+from typing import Dict, List, Any, Optional
+from .text_processor import TextProcessor
+from .visualization_engine import VisualizationEngine
+from .export_manager import ExportManager
+
+logger = logging.getLogger(__name__)
 
 class FreeVisualGenerator:
+    """
+    Main class that orchestrates the visual generation process
+    """
+    
     def __init__(self, model_manager):
-        self.model_manager = model_manager
-        self.text_processor = TextProcessor(model_manager)
-        self.layout_engine = LayoutEngine()
-        self.svg_generator = SVGGenerator()
+        """
+        Initialize the visual generator
         
-    def create_visualization(self, text: str, vis_type: str, **kwargs) -> Dict:
-        """Main visualization creation method"""
+        Args:
+            model_manager: LocalModelManager instance
+        """
         try:
-            # Process text
+            self.model_manager = model_manager
+            
+            # Initialize core components with error handling
+            self._initialize_components()
+            
+            # Set default configuration
+            self.config = self._get_default_config()
+            
+            logger.info("FreeVisualGenerator initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Error initializing FreeVisualGenerator: {str(e)}")
+            # Initialize with minimal functionality
+            self._initialize_fallback_components()
+    
+    def _initialize_components(self):
+        """Initialize core components"""
+        try:
+            # Initialize text processor
+            self.text_processor = TextProcessor(self.model_manager)
+            logger.info("TextProcessor initialized")
+            
+            # Initialize visualization engine
+            self.visualization_engine = VisualizationEngine()
+            logger.info("VisualizationEngine initialized")
+            
+            # Initialize export manager
+            self.export_manager = ExportManager()
+            logger.info("ExportManager initialized")
+            
+        except Exception as e:
+            logger.error(f"Error initializing components: {str(e)}")
+            raise
+    
+    def _initialize_fallback_components(self):
+        """Initialize minimal components when full initialization fails"""
+        logger.warning("Initializing fallback components")
+        
+        try:
+            # Minimal text processor
+            self.text_processor = MinimalTextProcessor()
+            self.visualization_engine = MinimalVisualizationEngine()
+            self.export_manager = MinimalExportManager()
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize even fallback components: {str(e)}")
+            # Set None components - will be handled by method calls
+            self.text_processor = None
+            self.visualization_engine = None
+            self.export_manager = None
+    
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Get default configuration"""
+        return {
+            'visualization_types': [
+                'flowchart', 'mindmap', 'network', 'timeline', 'infographic'
+            ],
+            'color_schemes': [
+                'professional', 'modern', 'minimal', 'vibrant', 'corporate'
+            ],
+            'export_formats': ['png', 'html', 'svg', 'pdf'],
+            'default_settings': {
+                'viz_type': 'flowchart',
+                'color_scheme': 'professional',
+                'layout': 'auto',
+                'quality': 'high'
+            }
+        }
+    
+    def generate_visualization(self, text: str, viz_type: str = 'flowchart', 
+                             color_scheme: str = 'professional', 
+                             **kwargs) -> Dict[str, Any]:
+        """
+        Generate visualization from text
+        
+        Args:
+            text: Input text to visualize
+            viz_type: Type of visualization
+            color_scheme: Color scheme to use
+            **kwargs: Additional parameters
+            
+        Returns:
+            Dictionary containing visualization results
+        """
+        try:
+            if not self.text_processor:
+                return self._generate_error_result("Text processor not available")
+            
+            # Extract entities from text
             entities = self.text_processor.extract_entities(text)
-            relationships = self.text_processor.extract_relationships(text, entities)
             
             if not entities:
-                return self._create_fallback_visualization(text, vis_type)
+                return self._generate_error_result("No entities found in text")
             
-            # Create graph structure
-            graph = self.text_processor.create_graph_structure(entities, relationships)
-            
-            # Generate layout
-            layout_data = self.layout_engine.calculate_layout(graph, vis_type)
-            
-            # Create visualization based on type
-            if vis_type == 'flowchart':
-                return self._create_flowchart(layout_data, text)
-            elif vis_type == 'mindmap':
-                return self._create_mindmap(layout_data, text)
-            elif vis_type == 'network':
-                return self._create_network_diagram(layout_data, text)
-            elif vis_type == 'infographic':
-                return self._create_infographic(entities, text)
+            # Generate visualization
+            if self.visualization_engine:
+                visualization = self.visualization_engine.create_visualization(
+                    entities, viz_type, color_scheme, **kwargs
+                )
             else:
-                return self._create_interactive_chart(entities, relationships)
-                
-        except Exception as e:
-            st.error(f"Visualization generation error: {e}")
-            return self._create_fallback_visualization(text, vis_type)
-    
-    def _create_flowchart(self, layout_data: Dict, original_text: str) -> Dict:
-        """Create flowchart visualization"""
-        svg_content = self.svg_generator.create_flowchart_svg(layout_data)
-        
-        return {
-            'type': 'svg',
-            'data': svg_content,
-            'title': 'Generated Flowchart',
-            'description': f'Flowchart based on: {original_text[:100]}...'
-        }
-    
-    def _create_mindmap(self, layout_data: Dict, original_text: str) -> Dict:
-        """Create mindmap visualization"""
-        svg_content = self.svg_generator.create_mindmap_svg(layout_data)
-        
-        return {
-            'type': 'svg',
-            'data': svg_content,
-            'title': 'Generated Mind Map',
-            'description': f'Mind map based on: {original_text[:100]}...'
-        }
-    
-    def _create_network_diagram(self, layout_data: Dict, original_text: str) -> Dict:
-        """Create network diagram using Plotly"""
-        nodes = layout_data.get('nodes', [])
-        edges = layout_data.get('edges', [])
-        positions = layout_data.get('positions', {})
-        
-        if not nodes:
-            return self._create_fallback_visualization(original_text, 'network')
-        
-        # Extract node and edge data for Plotly
-        node_x = []
-        node_y = []
-        node_text = []
-        node_colors = []
-        
-        for i, (node_name, node_data) in enumerate(nodes):
-            pos = positions.get(node_name, (500, 400))
-            node_x.append(pos[0])
-            node_y.append(pos[1])
-            node_text.append(node_name)
-            node_colors.append(f'hsl({(i * 50) % 360}, 70%, 50%)')
-        
-        # Create edge traces
-        edge_x = []
-        edge_y = []
-        
-        for edge in edges:
-            source_pos = positions.get(edge[0], (500, 400))
-            target_pos = positions.get(edge[1], (500, 400))
+                return self._generate_error_result("Visualization engine not available")
             
-            edge_x.extend([source_pos[0], target_pos[0], None])
-            edge_y.extend([source_pos[1], target_pos[1], None])
-        
-        # Create Plotly figure
-        fig = go.Figure()
-        
-        # Add edges
-        fig.add_trace(go.Scatter(
-            x=edge_x, y=edge_y,
-            line=dict(width=2, color='#888'),
-            hoverinfo='none',
-            mode='lines'
-        ))
-        
-        # Add nodes
-        fig.add_trace(go.Scatter(
-            x=node_x, y=node_y,
-            mode='markers+text',
-            marker=dict(
-                size=20,
-                color=node_colors,
-                line=dict(width=2, color='white')
-            ),
-            text=node_text,
-            textposition="middle center",
-            hoverinfo='text',
-            hovertext=node_text
-        ))
-        
-        fig.update_layout(
-            title='Network Diagram',
-            showlegend=False,
-            hovermode='closest',
-            margin=dict(b=20,l=5,r=5,t=40),
-            annotations=[ dict(
-                text=f"Generated from: {original_text[:50]}...",
-                showarrow=False,
-                xref="paper", yref="paper",
-                x=0.005, y=-0.002,
-                xanchor='left', yanchor='bottom',
-                font=dict(size=12)
-            )],
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
-        )
-        
-        return {
-            'type': 'plotly',
-            'data': fig,
-            'title': 'Interactive Network Diagram',
-            'description': f'Network visualization of relationships in: {original_text[:100]}...'
-        }
-    
-    def _create_infographic(self, entities: List[Dict], original_text: str) -> Dict:
-        """Create simple infographic using PIL"""
-        try:
-            # Create image
-            img = Image.new('RGB', (1000, 800), color='white')
-            draw = ImageDraw.Draw(img)
-            
-            # Try to use default font, fallback if not available
-            try:
-                title_font = ImageFont.truetype("arial.ttf", 24)
-                text_font = ImageFont.truetype("arial.ttf", 16)
-            except:
-                title_font = ImageFont.load_default()
-                text_font = ImageFont.load_default()
-            
-            # Draw title
-            draw.text((50, 50), "Generated Infographic", fill='black', font=title_font)
-            
-            # Draw entity boxes
-            y_offset = 120
-            colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3']
-            
-            for i, entity in enumerate(entities[:6]):  # Limit to 6 entities
-                color = colors[i % len(colors)]
-                
-                # Draw rectangle
-                draw.rectangle(
-                    [50, y_offset, 450, y_offset + 80],
-                    fill=color,
-                    outline='black',
-                    width=2
-                )
-                
-                # Draw text
-                draw.text(
-                    (60, y_offset + 20),
-                    f"{entity['text']} ({entity['type']})",
-                    fill='white',
-                    font=text_font
-                )
-                
-                # Draw importance bar
-                importance_width = int(entity['importance'] * 100)
-                draw.rectangle(
-                    [60, y_offset + 50, 60 + importance_width, y_offset + 60],
-                    fill='white',
-                    outline='black'
-                )
-                
-                y_offset += 100
-            
-            # Save to BytesIO
-            img_buffer = io.BytesIO()
-            img.save(img_buffer, format='PNG')
-            img_buffer.seek(0)
-            
-            return {
-                'type': 'image',
-                'data': img,
-                'buffer': img_buffer,
-                'title': 'Generated Infographic',
-                'description': f'Infographic based on: {original_text[:100]}...'
+            # Prepare result
+            result = {
+                'success': True,
+                'visualization': visualization,
+                'entities': entities,
+                'metadata': {
+                    'entity_count': len(entities),
+                    'viz_type': viz_type,
+                    'color_scheme': color_scheme,
+                    'processing_time': 0.0  # Could add timing
+                }
             }
-        
+            
+            return result
+            
         except Exception as e:
-            st.error(f"Infographic generation error: {e}")
-            return self._create_fallback_visualization(original_text, 'infographic')
+            logger.error(f"Error generating visualization: {str(e)}")
+            return self._generate_error_result(str(e))
     
-    def _create_interactive_chart(self, entities: List[Dict], relationships: List[Dict]) -> Dict:
-        """Create interactive chart using Plotly"""
-        # Create data for bar chart
-        entity_names = [e['text'][:20] for e in entities[:10]]
-        importance_scores = [e['importance'] for e in entities[:10]]
-        
-        fig = px.bar(
-            x=entity_names,
-            y=importance_scores,
-            title='Entity Importance Analysis',
-            labels={'x': 'Entities', 'y': 'Importance Score'},
-            color=importance_scores,
-            color_continuous_scale='viridis'
-        )
-        
-        fig.update_layout(
-            xaxis_tickangle=-45,
-            height=600,
-            showlegend=False
-        )
-        
+    def _generate_error_result(self, error_message: str) -> Dict[str, Any]:
+        """Generate error result structure"""
         return {
-            'type': 'plotly',
-            'data': fig,
-            'title': 'Interactive Entity Analysis',
-            'description': 'Interactive analysis of extracted entities and their importance'
+            'success': False,
+            'error': error_message,
+            'visualization': None,
+            'entities': [],
+            'metadata': {
+                'entity_count': 0,
+                'viz_type': 'none',
+                'color_scheme': 'none',
+                'processing_time': 0.0
+            }
         }
     
-    def _create_fallback_visualization(self, text: str, vis_type: str) -> Dict:
-        """Create simple fallback visualization"""
-        # Create a simple text-based visualization
-        img = Image.new('RGB', (800, 600), color='lightblue')
-        draw = ImageDraw.Draw(img)
-        
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get health status of the generator"""
         try:
-            font = ImageFont.truetype("arial.ttf", 20)
-        except:
-            font = ImageFont.load_default()
-        
-        # Draw fallback message
-        lines = [
-            f"Visualization Type: {vis_type.title()}",
-            "",
-            "Input Text:",
-            text[:200] + "..." if len(text) > 200 else text,
-            "",
-            "Note: This is a simplified visualization.",
-            "For better results, try providing more structured text."
-        ]
-        
-        y_offset = 50
-        for line in lines:
-            draw.text((50, y_offset), line, fill='black', font=font)
-            y_offset += 40
-        
+            status = {
+                'overall_status': 'healthy',
+                'components': {
+                    'model_manager': 'connected' if self.model_manager else 'disconnected',
+                    'text_processor': 'available' if self.text_processor else 'unavailable',
+                    'visualization_engine': 'available' if self.visualization_engine else 'unavailable',
+                    'export_manager': 'available' if self.export_manager else 'unavailable'
+                },
+                'capabilities': {
+                    'text_processing': self.text_processor is not None,
+                    'visualization_generation': self.visualization_engine is not None,
+                    'export_functionality': self.export_manager is not None
+                }
+            }
+            
+            # Overall health check
+            if not any(status['capabilities'].values()):
+                status['overall_status'] = 'critical'
+            elif not all(status['capabilities'].values()):
+                status['overall_status'] = 'degraded'
+            
+            return status
+            
+        except Exception as e:
+            return {
+                'overall_status': 'error',
+                'error': str(e),
+                'components': {},
+                'capabilities': {}
+            }
+
+
+# Minimal fallback classes
+class MinimalTextProcessor:
+    """Minimal text processor for fallback"""
+    
+    def extract_entities(self, text: str) -> List[Dict[str, Any]]:
+        """Simple entity extraction"""
+        try:
+            # Split by arrows or line breaks
+            import re
+            steps = re.split(r'[→\->\n]', text)
+            entities = []
+            
+            for i, step in enumerate(steps):
+                step = step.strip()
+                if step:
+                    entities.append({
+                        'id': f'step_{i}',
+                        'text': step,
+                        'order': i,
+                        'type': 'process',
+                        'importance': 1.0
+                    })
+            
+            return entities
+            
+        except Exception as e:
+            logger.error(f"Error in minimal entity extraction: {str(e)}")
+            return []
+
+class MinimalVisualizationEngine:
+    """Minimal visualization engine for fallback"""
+    
+    def create_visualization(self, entities: List[Dict[str, Any]], 
+                           viz_type: str, color_scheme: str, **kwargs):
+        """Create minimal visualization"""
+        # This would return a simple text-based representation
+        # or a basic chart - implement based on your needs
         return {
-            'type': 'image',
-            'data': img,
-            'title': f'Fallback {vis_type.title()}',
-            'description': 'Simplified visualization due to processing limitations'
+            'type': 'minimal',
+            'message': 'Minimal visualization mode - full features unavailable',
+            'entities_count': len(entities)
+        }
+
+class MinimalExportManager:
+    """Minimal export manager for fallback"""
+    
+    def export_visualization(self, visualization, format: str):
+        """Minimal export functionality"""
+        return {
+            'success': False,
+            'message': 'Export functionality limited in minimal mode'
         }
